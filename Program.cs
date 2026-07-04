@@ -1,3 +1,4 @@
+using DevOps_Agent.Configuration;
 using DevOps_Agent.Plugins;
 using Docker.DotNet;
 using Microsoft.SemanticKernel;
@@ -8,6 +9,9 @@ using System.Runtime.InteropServices;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi(); // For API documentation
+
+// Bind the "Docker" section of appsettings.json to DockerOptions and register it in DI.
+builder.Services.Configure<DockerOptions>(builder.Configuration.GetSection("Docker"));
 
 builder.Services.AddSingleton<IDockerClient>(provider =>
 {

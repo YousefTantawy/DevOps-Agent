@@ -1,7 +1,9 @@
 ﻿using System.ComponentModel;
 using System.Text;
+using DevOps_Agent.Configuration;
 using Docker.DotNet;
 using Docker.DotNet.Models;
+using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
 
 namespace DevOps_Agent.Plugins;
@@ -9,10 +11,12 @@ namespace DevOps_Agent.Plugins;
 public class DockerOperationsPlugin
 {
     private readonly IDockerClient _dockerClient;
+    private readonly List<string> _restartAllowlist; // Containers the agent is permitted to restart
 
-    public DockerOperationsPlugin(IDockerClient dockerClient)
+    public DockerOperationsPlugin(IDockerClient dockerClient, IOptions<DockerOptions> dockerOptions)
     {
         _dockerClient = dockerClient;
+        _restartAllowlist = dockerOptions.Value.RestartAllowlist; // Pulled from the "Docker" config section
     }
 
     [KernelFunction("get_container_status")] // Name of the plugin for the kernel to call
@@ -86,6 +90,16 @@ public class DockerOperationsPlugin
     public async Task<string> RestartContainerAsync(
         [Description("The exact name of the Docker container to restart")] string containerName)
     {
+        // GUARDRAIL: default-deny. The model can *request* any restart, but this runs
+        // regardless of what it decided — the Docker call below never fires unless the
+        // container name was explicitly approved in config. Returning an error string
+        // (instead of throwing) lets the model learn it was blocked and report that.
+        if (!_restartAllowlist.Contains(containerName))
+        {
+            return $"Error: Restarting '{containerName}' is not permitted. Allowed containers: " +
+                   $"{(_restartAllowlist.Count > 0 ? string.Join(", ", _restartAllowlist) : "(none configured)")}.";
+        }
+
         try
         {
             await _dockerClient.Containers.RestartContainerAsync(
